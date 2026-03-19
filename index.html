@@ -142,7 +142,7 @@
   <div class="sub">
     ← → で移動<br>
     スペースで発射 / 押しっぱなしで連射<br>
-    5000点でCLEAR / Enterでリスタート<br>
+    難易度ごとにCLEAR点数が変化 / Enterでリスタート<br>
     最初にキーか画面クリックでBGMスタート
   </div>
 
@@ -185,7 +185,12 @@
     let bgmStarted = false;
     let resultSaved = false;
 
-    const CLEAR_SCORE = 500;
+    const CLEAR_SCORES = {
+      easy: 500,
+      normal: 800,
+      hard: 1200
+    };
+
     const RANKING_KEY = "shootOfAlienTop5";
 
     const difficultySettings = {
@@ -193,24 +198,33 @@
         enemySpawnInterval: 58,
         enemyMinSpeed: 1.2,
         enemyMaxSpeed: 2.0,
+        fastEnemyChance: 0,
+        fastEnemyMinSpeed: 0,
+        fastEnemyMaxSpeed: 0,
         shootCooldown: 8,
         playerSpeed: 6.2,
         enemySize: 46
       },
       normal: {
-        enemySpawnInterval: 40,
-        enemyMinSpeed: 1.7,
-        enemyMaxSpeed: 2.7,
+        enemySpawnInterval: 38,
+        enemyMinSpeed: 1.8,
+        enemyMaxSpeed: 2.9,
+        fastEnemyChance: 0.18,
+        fastEnemyMinSpeed: 4.8,
+        fastEnemyMaxSpeed: 6.0,
         shootCooldown: 10,
         playerSpeed: 5.5,
         enemySize: 44
       },
       hard: {
-        enemySpawnInterval: 28,
-        enemyMinSpeed: 2.5,
-        enemyMaxSpeed: 3.8,
+        enemySpawnInterval: 20,
+        enemyMinSpeed: 3.0,
+        enemyMaxSpeed: 4.6,
+        fastEnemyChance: 0.45,
+        fastEnemyMinSpeed: 6.8,
+        fastEnemyMaxSpeed: 8.8,
         shootCooldown: 12,
-        playerSpeed: 5.0,
+        playerSpeed: 4.8,
         enemySize: 42
       }
     };
@@ -364,7 +378,7 @@
       let html = `<div style="text-align:center; margin-bottom:10px; color:#fff;">BEST SCORE : ${bestScore}</div>`;
       html += '<ol class="ranking-list">';
 
-      ranking.forEach((value, index) => {
+      ranking.forEach((value) => {
         html += `<li>${value} 点</li>`;
       });
 
@@ -446,15 +460,33 @@
     function spawnEnemy() {
       const settings = getDifficulty();
       const size = settings.enemySize;
-      const randomEnemyImage = enemyImages[Math.floor(Math.random() * enemyImages.length)];
+
+      let selectedImage = enemyImages[Math.floor(Math.random() * enemyImages.length)];
+      let speed =
+        settings.enemyMinSpeed +
+        Math.random() * (settings.enemyMaxSpeed - settings.enemyMinSpeed);
+
+      let isFastEnemy = false;
+
+      if (
+        currentDifficulty !== "easy" &&
+        Math.random() < settings.fastEnemyChance
+      ) {
+        selectedImage = enemyImage4;
+        speed =
+          settings.fastEnemyMinSpeed +
+          Math.random() * (settings.fastEnemyMaxSpeed - settings.fastEnemyMinSpeed);
+        isFastEnemy = true;
+      }
 
       enemies.push({
         x: Math.random() * (canvas.width - size),
         y: -size,
         width: size,
         height: size,
-        speed: settings.enemyMinSpeed + Math.random() * (settings.enemyMaxSpeed - settings.enemyMinSpeed),
-        image: randomEnemyImage
+        speed: speed,
+        image: selectedImage,
+        isFastEnemy: isFastEnemy
       });
     }
 
@@ -597,7 +629,7 @@
             score += 10;
             enemyRemoved = true;
 
-            if (score >= CLEAR_SCORE) {
+            if (score >= CLEAR_SCORES[currentDifficulty]) {
               gameClear = true;
               saveResultIfNeeded();
             }
@@ -653,7 +685,7 @@
         if (enemy.image && enemy.image.complete && enemy.image.naturalWidth > 0) {
           ctx.drawImage(enemy.image, enemy.x, enemy.y, enemy.width, enemy.height);
         } else {
-          ctx.fillStyle = "red";
+          ctx.fillStyle = enemy.isFastEnemy ? "#ff5a5a" : "red";
           ctx.fillRect(enemy.x, enemy.y, enemy.width, enemy.height);
         }
       });
@@ -683,6 +715,8 @@
     }
 
     function drawScore() {
+      const clearScore = CLEAR_SCORES[currentDifficulty];
+
       ctx.fillStyle = "#ffffff";
       ctx.font = "bold 20px sans-serif";
       ctx.fillText("SCORE: " + score, 14, 28);
@@ -692,7 +726,7 @@
       ctx.fillText("MODE: " + currentDifficulty.toUpperCase(), 14, 48);
 
       ctx.fillStyle = "#ffe27a";
-      ctx.fillText("CLEAR: " + CLEAR_SCORE, 250, 28);
+      ctx.fillText("CLEAR: " + clearScore, 250, 28);
     }
 
     function drawGameOver() {
