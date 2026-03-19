@@ -66,7 +66,7 @@
       width: 100%;
       display: flex;
       justify-content: center;
-      padding: 0 12px 24px;
+      padding: 0 12px 16px;
     }
 
     canvas {
@@ -78,6 +78,62 @@
       border-radius: 12px;
       box-shadow: 0 0 24px rgba(95, 118, 255, 0.25);
     }
+
+    .ranking-wrap {
+      width: min(360px, 95vw);
+      margin: 0 auto 28px;
+      padding: 14px 16px;
+      border: 1px solid rgba(125, 151, 255, 0.45);
+      border-radius: 12px;
+      background: rgba(255, 255, 255, 0.06);
+      text-align: left;
+      box-shadow: 0 0 18px rgba(95, 118, 255, 0.12);
+    }
+
+    .ranking-title {
+      font-size: 18px;
+      font-weight: bold;
+      margin-bottom: 10px;
+      text-align: center;
+    }
+
+    .ranking-sub {
+      font-size: 12px;
+      color: #cfd8ff;
+      margin-bottom: 10px;
+      text-align: center;
+      line-height: 1.6;
+    }
+
+    .ranking-list {
+      margin: 0;
+      padding-left: 24px;
+      line-height: 1.9;
+      color: #ffffff;
+    }
+
+    .ranking-empty {
+      text-align: center;
+      color: #cfd8ff;
+      font-size: 13px;
+      padding: 8px 0;
+    }
+
+    .clear-btn {
+      margin-top: 12px;
+      width: 100%;
+      border: 1px solid #6f84dd;
+      background: rgba(255, 255, 255, 0.08);
+      color: white;
+      padding: 10px 14px;
+      border-radius: 999px;
+      cursor: pointer;
+      font-size: 13px;
+    }
+
+    .clear-btn:hover {
+      background: rgba(255, 255, 255, 0.16);
+    }
   </style>
 </head>
 <body>
@@ -86,7 +142,7 @@
   <div class="sub">
     ← → で移動<br>
     スペースで発射 / 押しっぱなしで連射<br>
-    Enterでリスタート<br>
+    5000点でCLEAR / Enterでリスタート<br>
     最初にキーか画面クリックでBGMスタート
   </div>
 
@@ -100,9 +156,20 @@
     <canvas id="gameCanvas" width="360" height="520"></canvas>
   </div>
 
+  <div class="ranking-wrap">
+    <div class="ranking-title">MY TOP 5 RANKING</div>
+    <div class="ranking-sub">
+      このランキングはこの端末・このブラウザだけに保存されます
+    </div>
+    <div id="rankingArea"></div>
+    <button class="clear-btn" id="clearRankingBtn">ランキングをリセット</button>
+  </div>
+
   <script>
     const canvas = document.getElementById("gameCanvas");
     const ctx = canvas.getContext("2d");
+    const rankingArea = document.getElementById("rankingArea");
+    const clearRankingBtn = document.getElementById("clearRankingBtn");
 
     const keys = {};
     let bullets = [];
@@ -110,11 +177,16 @@
     let explosions = [];
     let score = 0;
     let gameOver = false;
+    let gameClear = false;
     let frameCount = 0;
     let shootCooldown = 0;
     let currentDifficulty = "easy";
     let hasPlayedGameOverSound = false;
     let bgmStarted = false;
+    let resultSaved = false;
+
+    const CLEAR_SCORE = 500;
+    const RANKING_KEY = "shootOfAlienTop5";
 
     const difficultySettings = {
       easy: {
@@ -255,6 +327,61 @@
       gameOverSound.play().catch(() => {});
     }
 
+    // ===== ランキング =====
+    function loadRanking() {
+      try {
+        return JSON.parse(localStorage.getItem(RANKING_KEY)) || [];
+      } catch (error) {
+        console.error("ランキング読み込み失敗", error);
+        return [];
+      }
+    }
+
+    function saveRanking(scores) {
+      localStorage.setItem(RANKING_KEY, JSON.stringify(scores));
+    }
+
+    function updateRanking(scoreValue) {
+      const ranking = loadRanking();
+      ranking.push(scoreValue);
+      ranking.sort((a, b) => b - a);
+
+      const top5 = ranking.slice(0, 5);
+      saveRanking(top5);
+      renderRanking();
+    }
+
+    function renderRanking() {
+      const ranking = loadRanking();
+
+      if (ranking.length === 0) {
+        rankingArea.innerHTML = '<div class="ranking-empty">まだランキング記録はありません</div>';
+        return;
+      }
+
+      const bestScore = ranking[0];
+
+      let html = `<div style="text-align:center; margin-bottom:10px; color:#fff;">BEST SCORE : ${bestScore}</div>`;
+      html += '<ol class="ranking-list">';
+
+      ranking.forEach((value, index) => {
+        html += `<li>${value} 点</li>`;
+      });
+
+      html += "</ol>";
+      rankingArea.innerHTML = html;
+    }
+
+    function clearRanking() {
+      const ok = confirm("ランキングをリセットする？");
+      if (!ok) return;
+
+      localStorage.removeItem(RANKING_KEY);
+      renderRanking();
+    }
+
+    clearRankingBtn.addEventListener("click", clearRanking);
+
     // ===== BGM開始用 =====
     document.addEventListener("click", startBgm, { once: false });
     document.addEventListener("keydown", startBgm, { once: false });
@@ -268,7 +395,7 @@
         e.preventDefault();
       }
 
-      if (gameOver && e.code === "Enter") {
+      if ((gameOver || gameClear) && e.code === "Enter") {
         resetGame();
       }
     });
@@ -297,7 +424,7 @@
 
     // ===== 弾発射 =====
     function shootBullet() {
-      if (gameOver) return;
+      if (gameOver || gameClear) return;
       if (shootCooldown > 0) return;
 
       const randomImage = bulletImages[Math.floor(Math.random() * bulletImages.length)];
@@ -389,10 +516,18 @@
       );
     }
 
+    // ===== 結果保存 =====
+    function saveResultIfNeeded() {
+      if (resultSaved) return;
+      resultSaved = true;
+      updateRanking(score);
+    }
+
     // ===== 更新 =====
     function update() {
-      if (gameOver) {
+      if (gameOver || gameClear) {
         updateExplosions();
+        saveResultIfNeeded();
         return;
       }
 
@@ -443,6 +578,7 @@
           );
           gameOver = true;
           playGameOverSound();
+          saveResultIfNeeded();
           break;
         }
       }
@@ -460,6 +596,12 @@
             bullets.splice(j, 1);
             score += 10;
             enemyRemoved = true;
+
+            if (score >= CLEAR_SCORE) {
+              gameClear = true;
+              saveResultIfNeeded();
+            }
+
             break;
           }
         }
@@ -548,6 +690,9 @@
       ctx.font = "14px sans-serif";
       ctx.fillStyle = "#d7deff";
       ctx.fillText("MODE: " + currentDifficulty.toUpperCase(), 14, 48);
+
+      ctx.fillStyle = "#ffe27a";
+      ctx.fillText("CLEAR: " + CLEAR_SCORE, 250, 28);
     }
 
     function drawGameOver() {
@@ -564,6 +709,24 @@
       ctx.fillText("Enterでリスタート", 102, 264);
     }
 
+    function drawGameClear() {
+      if (!gameClear) return;
+
+      ctx.fillStyle = "rgba(0, 0, 20, 0.6)";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      ctx.fillStyle = "#ffe27a";
+      ctx.font = "bold 34px sans-serif";
+      ctx.fillText("MISSION CLEAR!", 52, 210);
+
+      ctx.fillStyle = "#ffffff";
+      ctx.font = "20px sans-serif";
+      ctx.fillText("SCORE : " + score, 118, 252);
+
+      ctx.font = "18px sans-serif";
+      ctx.fillText("Enterでリスタート", 102, 290);
+    }
+
     function draw() {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       drawBackgroundStars();
@@ -573,6 +736,7 @@
       drawExplosions();
       drawScore();
       drawGameOver();
+      drawGameClear();
     }
 
     // ===== リセット =====
@@ -582,9 +746,11 @@
       explosions = [];
       score = 0;
       gameOver = false;
+      gameClear = false;
       frameCount = 0;
       shootCooldown = 0;
       hasPlayedGameOverSound = false;
+      resultSaved = false;
 
       gameOverSound.pause();
       gameOverSound.currentTime = 0;
@@ -601,6 +767,7 @@
     }
 
     updateDifficultyButtons();
+    renderRanking();
     gameLoop();
   </script>
 </body>
