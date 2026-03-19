@@ -1,0 +1,607 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>shoot of alien</title>
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      background: linear-gradient(to bottom, #050816, #101935 55%, #16244a);
+      font-family: sans-serif;
+      color: white;
+      text-align: center;
+      overflow-x: hidden;
+      overflow-y: auto;
+    }
+
+    h1 {
+      margin: 16px 0 8px;
+      font-size: 30px;
+      letter-spacing: 1px;
+    }
+
+    .sub {
+      font-size: 14px;
+      color: #d7deff;
+      margin-bottom: 8px;
+      line-height: 1.7;
+    }
+
+    .difficulty-wrap {
+      display: flex;
+      justify-content: center;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-bottom: 12px;
+    }
+
+    .difficulty-btn {
+      border: 1px solid #6f84dd;
+      background: rgba(255, 255, 255, 0.08);
+      color: white;
+      padding: 10px 16px;
+      border-radius: 999px;
+      cursor: pointer;
+      font-size: 14px;
+      transition: 0.2s;
+    }
+
+    .difficulty-btn:hover {
+      background: rgba(255, 255, 255, 0.16);
+    }
+
+    .difficulty-btn.active {
+      background: #7d97ff;
+      color: #08112d;
+      font-weight: bold;
+      box-shadow: 0 0 12px rgba(125, 151, 255, 0.5);
+    }
+
+    .game-wrap {
+      width: 100%;
+      display: flex;
+      justify-content: center;
+      padding: 0 12px 24px;
+    }
+
+    canvas {
+      display: block;
+      width: min(360px, 95vw);
+      height: auto;
+      background: linear-gradient(to bottom, #040714, #0b1330 45%, #11204a);
+      border: 2px solid #5568ba;
+      border-radius: 12px;
+      box-shadow: 0 0 24px rgba(95, 118, 255, 0.25);
+    }
+  </style>
+</head>
+<body>
+  <h1>shoot of alien</h1>
+
+  <div class="sub">
+    ← → で移動<br>
+    スペースで発射 / 押しっぱなしで連射<br>
+    Enterでリスタート<br>
+    最初にキーか画面クリックでBGMスタート
+  </div>
+
+  <div class="difficulty-wrap">
+    <button class="difficulty-btn active" data-level="easy">EASY</button>
+    <button class="difficulty-btn" data-level="normal">NORMAL</button>
+    <button class="difficulty-btn" data-level="hard">HARD</button>
+  </div>
+
+  <div class="game-wrap">
+    <canvas id="gameCanvas" width="360" height="520"></canvas>
+  </div>
+
+  <script>
+    const canvas = document.getElementById("gameCanvas");
+    const ctx = canvas.getContext("2d");
+
+    const keys = {};
+    let bullets = [];
+    let enemies = [];
+    let explosions = [];
+    let score = 0;
+    let gameOver = false;
+    let frameCount = 0;
+    let shootCooldown = 0;
+    let currentDifficulty = "easy";
+    let hasPlayedGameOverSound = false;
+    let bgmStarted = false;
+
+    const difficultySettings = {
+      easy: {
+        enemySpawnInterval: 58,
+        enemyMinSpeed: 1.2,
+        enemyMaxSpeed: 2.0,
+        shootCooldown: 8,
+        playerSpeed: 6.2,
+        enemySize: 46
+      },
+      normal: {
+        enemySpawnInterval: 40,
+        enemyMinSpeed: 1.7,
+        enemyMaxSpeed: 2.7,
+        shootCooldown: 10,
+        playerSpeed: 5.5,
+        enemySize: 44
+      },
+      hard: {
+        enemySpawnInterval: 28,
+        enemyMinSpeed: 2.5,
+        enemyMaxSpeed: 3.8,
+        shootCooldown: 12,
+        playerSpeed: 5.0,
+        enemySize: 42
+      }
+    };
+
+    const player = {
+      x: canvas.width / 2 - 24,
+      y: canvas.height - 72,
+      width: 48,
+      height: 48,
+      speed: difficultySettings[currentDifficulty].playerSpeed
+    };
+
+    // ===== 画像 =====
+    const playerImage = new Image();
+
+    const enemyImage1 = new Image();
+    const enemyImage2 = new Image();
+    const enemyImage3 = new Image();
+    const enemyImage4 = new Image();
+    const enemyImage5 = new Image();
+    const enemyImage6 = new Image();
+    const enemyImage7 = new Image();
+
+    const bulletYellowImage = new Image();
+    const bulletPinkImage = new Image();
+    const bulletBlueImage = new Image();
+
+    playerImage.src = "player.png";
+
+    enemyImage1.src = "enemy1.png";
+    enemyImage2.src = "enemy2.png";
+    enemyImage3.src = "enemy3.png";
+    enemyImage4.src = "enemy4.png";
+    enemyImage5.src = "enemy5.png";
+    enemyImage6.src = "enemy6.png";
+    enemyImage7.src = "enemy7.png";
+
+    bulletYellowImage.src = "bullet_yellow.png";
+    bulletPinkImage.src = "bullet_pink.png";
+    bulletBlueImage.src = "bullet_blue.png";
+
+    const bulletImages = [
+      bulletYellowImage,
+      bulletPinkImage,
+      bulletBlueImage
+    ];
+
+    const enemyImages = [
+      enemyImage1,
+      enemyImage2,
+      enemyImage3,
+      enemyImage4,
+      enemyImage5,
+      enemyImage6,
+      enemyImage7
+    ];
+
+    playerImage.onerror = () => console.error("player.png の読み込み失敗");
+    enemyImage1.onerror = () => console.error("enemy1.png の読み込み失敗");
+    enemyImage2.onerror = () => console.error("enemy2.png の読み込み失敗");
+    enemyImage3.onerror = () => console.error("enemy3.png の読み込み失敗");
+    enemyImage4.onerror = () => console.error("enemy4.png の読み込み失敗");
+    enemyImage5.onerror = () => console.error("enemy5.png の読み込み失敗");
+    enemyImage6.onerror = () => console.error("enemy6.png の読み込み失敗");
+    enemyImage7.onerror = () => console.error("enemy7.png の読み込み失敗");
+    bulletYellowImage.onerror = () => console.error("bullet_yellow.png の読み込み失敗");
+    bulletPinkImage.onerror = () => console.error("bullet_pink.png の読み込み失敗");
+    bulletBlueImage.onerror = () => console.error("bullet_blue.png の読み込み失敗");
+
+    // ===== 音 =====
+    const shootSound = new Audio("shoot.mp3");
+    const explosionSound = new Audio("explosion.mp3");
+    const gameOverSound = new Audio("gameover.mp3");
+    const bgm = new Audio("juubangai.mp3");
+
+    shootSound.preload = "auto";
+    explosionSound.preload = "auto";
+    gameOverSound.preload = "auto";
+    bgm.preload = "auto";
+
+    shootSound.volume = 0.45;
+    explosionSound.volume = 0.55;
+    gameOverSound.volume = 0.6;
+    bgm.volume = 0.35;
+    bgm.loop = true;
+
+    bgm.onerror = () => console.error("juubangai.mp3 の読み込み失敗");
+
+    function startBgm() {
+      if (bgmStarted) return;
+      bgmStarted = true;
+      bgm.play().catch(() => {
+        bgmStarted = false;
+      });
+    }
+
+    function playShootSound() {
+      const sound = shootSound.cloneNode();
+      sound.volume = shootSound.volume;
+      sound.play().catch(() => {});
+    }
+
+    function playExplosionSound() {
+      const sound = explosionSound.cloneNode();
+      sound.volume = explosionSound.volume;
+      sound.play().catch(() => {});
+    }
+
+    function playGameOverSound() {
+      if (hasPlayedGameOverSound) return;
+      hasPlayedGameOverSound = true;
+
+      gameOverSound.currentTime = 0;
+      gameOverSound.play().catch(() => {});
+    }
+
+    // ===== BGM開始用 =====
+    document.addEventListener("click", startBgm, { once: false });
+    document.addEventListener("keydown", startBgm, { once: false });
+    document.addEventListener("touchstart", startBgm, { once: false });
+
+    // ===== 入力 =====
+    document.addEventListener("keydown", (e) => {
+      keys[e.code] = true;
+
+      if (e.code === "Space") {
+        e.preventDefault();
+      }
+
+      if (gameOver && e.code === "Enter") {
+        resetGame();
+      }
+    });
+
+    document.addEventListener("keyup", (e) => {
+      keys[e.code] = false;
+    });
+
+    document.querySelectorAll(".difficulty-btn").forEach((button) => {
+      button.addEventListener("click", () => {
+        currentDifficulty = button.dataset.level;
+        updateDifficultyButtons();
+        resetGame();
+      });
+    });
+
+    function updateDifficultyButtons() {
+      document.querySelectorAll(".difficulty-btn").forEach((button) => {
+        button.classList.toggle("active", button.dataset.level === currentDifficulty);
+      });
+    }
+
+    function getDifficulty() {
+      return difficultySettings[currentDifficulty];
+    }
+
+    // ===== 弾発射 =====
+    function shootBullet() {
+      if (gameOver) return;
+      if (shootCooldown > 0) return;
+
+      const randomImage = bulletImages[Math.floor(Math.random() * bulletImages.length)];
+
+      bullets.push({
+        x: player.x + player.width / 2 - 8,
+        y: player.y - 8,
+        width: 16,
+        height: 28,
+        speed: 8.8,
+        image: randomImage
+      });
+
+      playShootSound();
+      shootCooldown = getDifficulty().shootCooldown;
+    }
+
+    // ===== 敵生成 =====
+    function spawnEnemy() {
+      const settings = getDifficulty();
+      const size = settings.enemySize;
+      const randomEnemyImage = enemyImages[Math.floor(Math.random() * enemyImages.length)];
+
+      enemies.push({
+        x: Math.random() * (canvas.width - size),
+        y: -size,
+        width: size,
+        height: size,
+        speed: settings.enemyMinSpeed + Math.random() * (settings.enemyMaxSpeed - settings.enemyMinSpeed),
+        image: randomEnemyImage
+      });
+    }
+
+    // ===== 爆発 =====
+    function createExplosion(x, y) {
+      const particles = [];
+
+      for (let i = 0; i < 14; i++) {
+        const angle = Math.random() * Math.PI * 2;
+        const speed = 1.2 + Math.random() * 2.8;
+        const life = 24 + Math.floor(Math.random() * 10);
+
+        particles.push({
+          x,
+          y,
+          vx: Math.cos(angle) * speed,
+          vy: Math.sin(angle) * speed,
+          radius: 2 + Math.random() * 5,
+          life: life,
+          maxLife: life,
+          color: ["#ffd54a", "#ff8ad8", "#7cc8ff", "#ffffff", "#ffb347"][Math.floor(Math.random() * 5)]
+        });
+      }
+
+      explosions.push({ particles });
+      playExplosionSound();
+    }
+
+    function updateExplosions() {
+      for (let i = explosions.length - 1; i >= 0; i--) {
+        const explosion = explosions[i];
+
+        for (let j = explosion.particles.length - 1; j >= 0; j--) {
+          const p = explosion.particles[j];
+
+          p.x += p.vx;
+          p.y += p.vy;
+          p.vy += 0.03;
+          p.life--;
+
+          if (p.life <= 0) {
+            explosion.particles.splice(j, 1);
+          }
+        }
+
+        if (explosion.particles.length === 0) {
+          explosions.splice(i, 1);
+        }
+      }
+    }
+
+    // ===== 当たり判定 =====
+    function isColliding(a, b) {
+      return (
+        a.x < b.x + b.width &&
+        a.x + a.width > b.x &&
+        a.y < b.y + b.height &&
+        a.y + a.height > b.y
+      );
+    }
+
+    // ===== 更新 =====
+    function update() {
+      if (gameOver) {
+        updateExplosions();
+        return;
+      }
+
+      const settings = getDifficulty();
+      player.speed = settings.playerSpeed;
+
+      if (keys["ArrowLeft"] && player.x > 0) {
+        player.x -= player.speed;
+      }
+
+      if (keys["ArrowRight"] && player.x + player.width < canvas.width) {
+        player.x += player.speed;
+      }
+
+      if (keys["Space"]) {
+        shootBullet();
+      }
+
+      if (shootCooldown > 0) {
+        shootCooldown--;
+      }
+
+      for (let i = bullets.length - 1; i >= 0; i--) {
+        bullets[i].y -= bullets[i].speed;
+
+        if (bullets[i].y + bullets[i].height < 0) {
+          bullets.splice(i, 1);
+        }
+      }
+
+      frameCount++;
+      if (frameCount % settings.enemySpawnInterval === 0) {
+        spawnEnemy();
+      }
+
+      for (let i = enemies.length - 1; i >= 0; i--) {
+        enemies[i].y += enemies[i].speed;
+
+        if (enemies[i].y > canvas.height) {
+          enemies.splice(i, 1);
+          continue;
+        }
+
+        if (isColliding(player, enemies[i])) {
+          createExplosion(
+            player.x + player.width / 2,
+            player.y + player.height / 2
+          );
+          gameOver = true;
+          playGameOverSound();
+          break;
+        }
+      }
+
+      for (let i = enemies.length - 1; i >= 0; i--) {
+        let enemyRemoved = false;
+
+        for (let j = bullets.length - 1; j >= 0; j--) {
+          if (isColliding(bullets[j], enemies[i])) {
+            createExplosion(
+              enemies[i].x + enemies[i].width / 2,
+              enemies[i].y + enemies[i].height / 2
+            );
+            enemies.splice(i, 1);
+            bullets.splice(j, 1);
+            score += 10;
+            enemyRemoved = true;
+            break;
+          }
+        }
+
+        if (enemyRemoved) continue;
+      }
+
+      updateExplosions();
+    }
+
+    // ===== 描画 =====
+    function drawBackgroundStars() {
+      ctx.save();
+      ctx.fillStyle = "rgba(255,255,255,0.75)";
+
+      for (let i = 0; i < 48; i++) {
+        const x = (i * 71) % canvas.width;
+        const y = ((i * 39) + frameCount * 1.1) % canvas.height;
+        ctx.fillRect(x, y, 2, 2);
+      }
+
+      ctx.restore();
+    }
+
+    function drawPlayer() {
+      if (!gameOver) {
+        if (playerImage.complete && playerImage.naturalWidth > 0) {
+          ctx.drawImage(playerImage, player.x, player.y, player.width, player.height);
+        } else {
+          ctx.fillStyle = "cyan";
+          ctx.fillRect(player.x, player.y, player.width, player.height);
+        }
+      }
+    }
+
+    function drawBullets() {
+      bullets.forEach((bullet) => {
+        if (bullet.image.complete && bullet.image.naturalWidth > 0) {
+          ctx.drawImage(bullet.image, bullet.x, bullet.y, bullet.width, bullet.height);
+        } else {
+          ctx.fillStyle = "yellow";
+          ctx.fillRect(bullet.x, bullet.y, bullet.width, bullet.height);
+        }
+      });
+    }
+
+    function drawEnemies() {
+      enemies.forEach((enemy) => {
+        if (enemy.image && enemy.image.complete && enemy.image.naturalWidth > 0) {
+          ctx.drawImage(enemy.image, enemy.x, enemy.y, enemy.width, enemy.height);
+        } else {
+          ctx.fillStyle = "red";
+          ctx.fillRect(enemy.x, enemy.y, enemy.width, enemy.height);
+        }
+      });
+    }
+
+    function drawExplosions() {
+      explosions.forEach((explosion) => {
+        explosion.particles.forEach((p) => {
+          const alpha = p.life / p.maxLife;
+
+          ctx.save();
+          ctx.globalAlpha = alpha;
+
+          ctx.beginPath();
+          ctx.fillStyle = p.color;
+          ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
+          ctx.fill();
+
+          ctx.beginPath();
+          ctx.fillStyle = "#ffffff";
+          ctx.arc(p.x, p.y, p.radius * 0.35, 0, Math.PI * 2);
+          ctx.fill();
+
+          ctx.restore();
+        });
+      });
+    }
+
+    function drawScore() {
+      ctx.fillStyle = "#ffffff";
+      ctx.font = "bold 20px sans-serif";
+      ctx.fillText("SCORE: " + score, 14, 28);
+
+      ctx.font = "14px sans-serif";
+      ctx.fillStyle = "#d7deff";
+      ctx.fillText("MODE: " + currentDifficulty.toUpperCase(), 14, 48);
+    }
+
+    function drawGameOver() {
+      if (!gameOver) return;
+
+      ctx.fillStyle = "rgba(0, 0, 0, 0.55)";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      ctx.fillStyle = "#ffffff";
+      ctx.font = "bold 34px sans-serif";
+      ctx.fillText("GAME OVER", 88, 228);
+
+      ctx.font = "18px sans-serif";
+      ctx.fillText("Enterでリスタート", 102, 264);
+    }
+
+    function draw() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      drawBackgroundStars();
+      drawPlayer();
+      drawBullets();
+      drawEnemies();
+      drawExplosions();
+      drawScore();
+      drawGameOver();
+    }
+
+    // ===== リセット =====
+    function resetGame() {
+      bullets = [];
+      enemies = [];
+      explosions = [];
+      score = 0;
+      gameOver = false;
+      frameCount = 0;
+      shootCooldown = 0;
+      hasPlayedGameOverSound = false;
+
+      gameOverSound.pause();
+      gameOverSound.currentTime = 0;
+
+      player.x = canvas.width / 2 - 24;
+      player.y = canvas.height - 72;
+    }
+
+    // ===== ループ =====
+    function gameLoop() {
+      update();
+      draw();
+      requestAnimationFrame(gameLoop);
+    }
+
+    updateDifficultyButtons();
+    gameLoop();
+  </script>
+</body>
+</html>
